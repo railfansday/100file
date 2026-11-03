@@ -1,0 +1,53 @@
+name: Scrape 1 Jam & Export HTML
+
+on:
+  workflow_dispatch:          # Tombol manual
+  schedule:
+    - cron: '0 * * * *'       # Opsional: Berjalan otomatis setiap 1 jam
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout kode
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install feedparser requests beautifulsoup4 lxml
+
+      # ===== JALANKAN FILE GABUNGAN =====
+      - name: Jalankan Scraper & Export
+        run: python importexport.py
+
+      # ===== COMMIT & PUSH HASIL =====
+      - name: Commit & Push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Mengambil folder database dan SEMUA file HTML/XML di folder utama
+          git add database_5menit/ *.html *.xml *.txt || true
+          
+          # Jika tidak ada perubahan (tidak ada berita baru), hentikan dengan sukses
+          git diff --staged --quiet && echo "Tidak ada artikel baru" && exit 0
+          
+          # Commit dan Push
+          git commit -m "Update otomatis: Berita 1 Jam [skip ci]"
+          git pull --rebase origin main || true
+          git push
