@@ -33,6 +33,185 @@ footer{text-align:center;color:#64748b;font-size:14px;padding:30px 0;border-top:
 <header><h1>News Portal Indonesia</h1></header>
 <nav><a href="index.html">🏠 All News</a><a href="technology.html">📰 Technology</a><a href="business.html">📰 Business</a><a href="sports.html">📰 Sports</a><a href="entertainment.html">📰 Entertainment</a><a href="health.html">📰 Health</a><a href="science.html">📰 Science</a><a href="politics.html">📰 Politics</a><a href="world.html" class="active">📰 World</a><a href="travel.html">📰 Travel</a><a href="food.html">📰 Food</a><a href="automotive.html">📰 Automotive</a><a href="education.html">📰 Education</a><a href="lifestyle.html">📰 Lifestyle</a><a href="other.html">📰 Other</a></nav>
 <h1 style="color:#1e293b;border-left:5px solid #2563eb;padding-left:15px;margin-bottom:30px;">World - News Portal Indonesia</h1>
+<article class="article-card" id="artikel-6406">
+    <script type="application/ld+json">{"@context": "https://schema.org", "@type": "NewsArticle", "headline": "Distributed LLM Training Across Metros: Streaming DiLoCo in MaxText", "image": ["https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/Dilco_header.2e16d0ba.fill-1200x600.jpg"], "datePublished": "2026-11-20T08:04:33.867354", "dateModified": "2026-11-20T08:04:33.867354", "mainEntityOfPage": "https://railfansday.github.io/100file/world.html#artikel-6406"}</script>
+    <h2>Distributed LLM Training Across Metros: Streaming DiLoCo in MaxText</h2>
+    <div class="article-meta">
+        📅 Nov 20, 2026 &nbsp;|&nbsp; Category: <strong>World</strong> &nbsp;|&nbsp; 
+        <a href="https://developers.googleblog.com/distributed-llm-training-across-metros-streaming-diloco-in-maxtext/" target="_blank" rel="nofollow">Read Source &rarr;</a>
+    </div>
+    <div class="article-body">
+        <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/Dilco_header.2e16d0ba.fill-1200x600.jpg" alt="Distributed LLM Training Across Metros: Streaming DiLoCo in MaxText" loading="lazy">
+        
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/Dilco_header.2e16d0ba.fill-1200x600.jpg" alt="Distributed LLM Training Across Metros: Streaming DiLoCo in MaxText" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+<div style="text-align:center; margin:20px 0;">
+    <script type="text/javascript">
+        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
+    </script>
+    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
+</div>
+
+            <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
+                <p>Traditionally, training state-of-the-art Large Language Models (LLMs) relies on a monolithic cluster of accelerators, where all devices are collocated and tightly coupled via high-bandwidth to constantly synchronize gradients. However, physical and cost constraints make scaling a single slice increasingly difficult.</p>
+<p>To scale further, we can connect multiple compute slices across geographically distributed datacenters. However, when training across multiple datacenters over wide-area networks (WAN), standard data-parallel training suffers from severe network stalls because slow WAN transfers cannot be fully overlapped with computation.</p>
+<p>To address this, the Google DeepMind and Google Research teams developed DiLoCo (Distributed Low-Communication), a distributed optimization algorithm designed to make training resilient to these low-bandwidth, high-latency connections. In this blog post, we discuss the core concepts of DiLoCo, how it is implemented in MaxText (Google's open-source JAX-based LLM training framework), and the performance benefits it brings to large-scale LLM training on Google Cloud.</p>
+<p>DiLoCo was introduced by Google DeepMind in the paper DiLoCo: Distributed Low-Communication Training of Language Models. Instead of synchronizing gradients across all devices at every single training step (as in standard Data Parallelism), DiLoCo partitions training across M independent compute groups, referred to as learners, and allows each learner to perform many local optimization steps independently before communicating across groups.</p>
+<p>Despite communicating significantly less frequently (by a factor of H, e.g., 1-2 orders of magnitude less) than standard synchronous training, DiLoCo has been shown to achieve comparable convergence and model quality.</p>
+<p>The Vanilla DiLoCo described above reduces total communication volume by a factor of H, however, all learners still transmit their weight deltas for the entire model all at once at every H-th step. On a thin network pipe, that full-model transfer creates a large periodic stall every H steps. This issue is alleviated by Streaming DiLoCo, which is described in the next section.</p>
+<p>In multi-slice training, communication within a single slice is handled by high-speed Inter-Chip Interconnects (ICI). When scaling to multiple slices, synchronization across slices must traverse the Data Center Network (DCN) or, if the slices are geographically distributed, wide-area networks (WAN).</p>
+<p>Within a single datacenter, DCN bandwidth is high enough that JAX and XLA can often hide standard Data Parallel all-reduce collectives by overlapping gradient communication with backward-pass computation. Across datacenters or congested links, however, bandwidth drops and latency rises sharply. Standard DP stalls at every step waiting for global gradient synchronization, collapsing Model FLOPS Utilization (MFU).</p>
+<p>Streaming DiLoCo eliminates this synchronization stall by partitioning the model's parameters into P disjoint fragments. Over the course of H steps, every single fragment in the model is synchronized exactly once, achieving the exact same outer-loop cadence as vanilla DiLoCo without spiky bandwidth utilization.</p>
+<p>Using a roofline model (similar to the JAX Scaling Book), we can calculate the network bandwidth required to prevent communication stalls for a model with ∣Θ∣ parameters (at b bytes per parameter, e.g., b=2 for bfloat16) and per-step compute time tstep=tfwd+tbwd. For example, the standard Data Parallel algorithm transfers 2∣Θ∣b bytes per sync via an all-reduce collective, which is a distributed reduce-scatter where each node reduces a different part, followed by an all-gather so all participants receive all parts. To achieve zero communication stalls, we overlap the reduce-scatter of the gradients with the backward pass, which produces them and takes tbwd time. Therefore, the peak required bandwidth is Bdp ≈ 2∣Θ∣b / tbwd.</p>
+<p>Worked Example (Qwen3-32B in bfloat16, tstep​≈6.2s, P=H=65):</p>
+<p>To evaluate distributed efficiency under realistic network bottlenecks, we benchmarked Qwen3-32B (64 decoder layers, partitioned into P = 65 fragments with H = 65) across 2× TPU v5p-32 slices (dcn_diloco_parallelism=2) using built-in Linux traffic-control (tc) bandwidth shaping to limit inter-slice bandwidth across three network regimes: Unthrottled (Line Rate), 30 Gbit/s aggregate (Moderate Congestion), and 10 Gbit/s aggregate (Severe Congestion).</p>
+<p>A common question with low-communication training is whether allowing learners to train independently between synchronizations degrades model quality—especially on Mixture-of-Experts (MoE) architectures, where independent updates could cause expert routers to drift apart.</p>
+<p>We evaluated Streaming DiLoCo against synchronous Data Parallel pre-training across two MoE architectures in MaxText (Qwen3-30B-A3B and Gemma4-26B-A4B) over 4,000 training steps:</p>
+<p>Empirical results confirm that Streaming DiLoCo preserves—and even slightly improves—validation loss:</p>
+<p>MaxText provides a native JAX and Flax NNX implementation of both Vanilla and Streaming DiLoCo—requiring no external central parameter servers.</p>
+<p>You can enable Streaming DiLoCo in your MaxText YAML configuration or CLI overrides by setting enable_diloco: true and enable_streaming_diloco: true. As a best practice, set both num_diloco_fragments (P) and diloco_sync_period (H) to N_layers + 1 so that exactly one fragment is synchronized per training step (Δh = 1):</p>
+<p>In MaxText, diloco.py splits each global batch across the M learners so each learner processes GBS / M tokens per step. To overlap cross-slice communication with TPU computation in Streaming DiLoCo, weight deltas for the scheduled fragment are offloaded to M-way sharded syncer workers running on the learner host CPUs. Rather than routing through a single central coordinator, the host-CPU syncer shards execute a distributed all-reduce across the network in the background to average the fragment deltas while the TPUs continue running inner-loop training steps. Each syncer shard then applies the outer Nesterov momentum update locally and writes the updated fragment weights back to its colocated TPU learner. To dive deeper or launch your first run:</p>
+<p>Streaming DiLoCo in MaxText decouples large-scale LLM pre-training from the requirement of a single, monolithic, high-bandwidth fabric. By combining use of an inner and outer optimizer with fine-grained parameter streaming, engineering teams can pool TPU slices across congested datacenter networks or geographically distributed metros—sustaining high hardware utilization without compromising model convergence. Streaming DiLoCo is available today in MaxText v0.2.5 on PyPI, the corresponding Docker images and on GitHub main. Try it today for experimenting with distributed training workloads.</p>
+<p>Multi-Turn Agentic Reinforcement Learning with Tunix and Gemma 4 on Google TPUs</p>
+<p>Unlocking Stable On-Policy RL on TPU with Bitwise-Zero Train–Inference Mismatch</p>
+<p>Gemini 4 Hydrogen: a faster model for general purpose robotics</p>
+<p>Securing Your Agents: A Hands-On Guide to Agent Anomaly Detection</p>
+                <p style="margin-top: 25px;">
+                    <a href="https://developers.googleblog.com/distributed-llm-training-across-metros-streaming-diloco-in-maxtext/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                        &rarr; Baca artikel asli
+                    </a>
+                </p>
+            </div>
+            
+<div style="text-align:center; margin:20px 0;">
+    <script type="text/javascript">
+        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
+    </script>
+    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
+</div>
+
+            
+        
+<div style="text-align:center; margin:20px 0;">
+    <script type="text/javascript">
+        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
+    </script>
+    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
+</div>
+
+    </div>
+</article>
+<article class="article-card" id="artikel-6393">
+    <script type="application/ld+json">{"@context": "https://schema.org", "@type": "NewsArticle", "headline": "Canadian National Railway Company (CNR:CA) Presents at 26th Annual Scotiabank Transportation & Industrials Conference Transcript", "image": ["https://static.seekingalpha.com/assets/og_image_1200-29b2bfe1a595477db6826bd2126c63ac2091efb7ec76347a8e7f81ba17e3de6c.png"], "datePublished": "2026-11-20T07:42:56.000Z", "dateModified": "2026-11-20T07:42:56.000Z", "mainEntityOfPage": "https://railfansday.github.io/100file/world.html#artikel-6393"}</script>
+    <h2>Canadian National Railway Company (CNR:CA) Presents at 26th Annual Scotiabank Transportation &amp; Industrials Conference Transcript</h2>
+    <div class="article-meta">
+        📅 Nov 20, 2026 &nbsp;|&nbsp; Category: <strong>World</strong> &nbsp;|&nbsp; 
+        <a href="https://seekingalpha.com/article/4970501-canadian-national-railway-company-cnr-ca-presents-at-26th-annual-scotiabank-transportation?source=feed_all_articles" target="_blank" rel="nofollow">Read Source &rarr;</a>
+    </div>
+    <div class="article-body">
+        <img src="https://static.seekingalpha.com/assets/og_image_1200-29b2bfe1a595477db6826bd2126c63ac2091efb7ec76347a8e7f81ba17e3de6c.png" alt="Canadian National Railway Company (CNR:CA) Presents at 26th Annual Scotiabank Transportation &amp; Industrials Conference Transcript" loading="lazy">
+        
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://static.seekingalpha.com/assets/og_image_1200-29b2bfe1a595477db6826bd2126c63ac2091efb7ec76347a8e7f81ba17e3de6c.png" alt="Canadian National Railway Company (CNR:CA) Presents at 26th Annual Scotiabank Transportation & Industrials Conference Transcript" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+<div style="text-align:center; margin:20px 0;">
+    <script type="text/javascript">
+        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
+    </script>
+    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
+</div>
+
+            <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
+                <p>Canadian National Railway Company (CNR:CA) 26th Annual Scotiabank Transportation & Industrials Conference November 18, 2026 8:00 AM EST</p>
+<p>Tracy Robinson - President, CEO & Director</p>
+<p>Konark Gupta - Scotiabank Global Banking and Markets, Research Division</p>
+<p>Konark GuptaScotiabank Global Banking and Markets, Research Division</p>
+<p>Good morning, folks. Thanks for joining us on the second and last day of our 26th Annual Scotiabank Transportation and Industrials Conference. I'm Konark Gupta, Transportation and Industrials Analyst. We'll be kicking off today with none other than CN Rail. I'm pleased to have President and CEO, Tracy Robinson, with us.</p>
+<p>Konark GuptaScotiabank Global Banking and Markets, Research Division</p>
+<p>You as well. Great. So I guess, Tracy, you might have some opening comments for us.</p>
+<p>Yes. Listen, I was here last year, and thanks for having me back. And last year, we talked about 3 priorities that we were going to be focusing on. One was operational and commercial intensity. The second was financial discipline. And the third, of course, was a more grounded approach to guidance. And so I thought I'd give you an update on those 3 areas, and then we'll go to your questions.</p>
+<p>Konark GuptaScotiabank Global Banking and Markets, Research Division</p>
+<p>So if you think about all that's going on in the world around us these days, what we focus -- what we've really been focusing on is those things that we can control. So in operations, Pat and his team are making great progress on improving productivity across the entirety of the operations. So most of our productivity metrics or all of our productivity metrics are moving in the right direction.</p>
+                <p style="margin-top: 25px;">
+                    <a href="https://seekingalpha.com/article/4970501-canadian-national-railway-company-cnr-ca-presents-at-26th-annual-scotiabank-transportation?source=feed_all_articles" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                        &rarr; Baca artikel asli
+                    </a>
+                </p>
+            </div>
+            
+<div style="text-align:center; margin:20px 0;">
+    <script type="text/javascript">
+        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
+    </script>
+    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
+</div>
+
+            
+        
+<div style="text-align:center; margin:20px 0;">
+    <script type="text/javascript">
+        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
+    </script>
+    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
+</div>
+
+    </div>
+</article>
+<article class="article-card" id="artikel-6358">
+    <script type="application/ld+json">{"@context": "https://schema.org", "@type": "NewsArticle", "headline": "The Assassin: Freddie Highmore’s 12-Part Thriller Officially Returns On AMC+", "image": ["https://static0.srcdn.com/wordpress/wp-content/uploads/2026/11/the-assassin-freddie-highmore.jpg?w=1600&h=900&fit=crop"], "datePublished": "2026-11-20T07:15:18Z", "dateModified": "2026-11-20T07:15:18Z", "mainEntityOfPage": "https://railfansday.github.io/100file/world.html#artikel-6358"}</script>
+    <h2>The Assassin: Freddie Highmore’s 12-Part Thriller Officially Returns On AMC+</h2>
+    <div class="article-meta">
+        📅 Nov 20, 2026 &nbsp;|&nbsp; Category: <strong>World</strong> &nbsp;|&nbsp; 
+        <a href="https://screenrant.com/amc-plus-the-assassin-season-2-freddie-highmore-thriller-must-watch/" target="_blank" rel="nofollow">Read Source &rarr;</a>
+    </div>
+    <div class="article-body">
+        <img src="https://static0.srcdn.com/wordpress/wp-content/uploads/2026/11/the-assassin-freddie-highmore.jpg?w=1600&amp;h=900&amp;fit=crop" alt="The Assassin: Freddie Highmore’s 12-Part Thriller Officially Returns On AMC+" loading="lazy">
+        
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://static0.srcdn.com/wordpress/wp-content/uploads/2026/11/the-assassin-freddie-highmore.jpg?w=1600&h=900&fit=crop" alt="The Assassin: Freddie Highmore’s 12-Part Thriller Officially Returns On AMC+" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+<div style="text-align:center; margin:20px 0;">
+    <script type="text/javascript">
+        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
+    </script>
+    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
+</div>
+
+            <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
+                <p>Freddie Highmore's 12-part assassin thriller officially returns on AMC+ with six new episodes, a deadly conspiracy, and an explosive mother-son reunion. After its season 1 premiere in late 2025, Highmore's first TV follow-up since The Good Doctor ended in 2024 offers an intriguing blend of action thriller and dark comedy, with critics and fans alike calling it pulpy, quirky, and loaded with on-screen chemistry. If you're a fan of Highmore's previous television projects, like Bates Motel, this is one of the best new series to press play on this weekend.</p>
+<p>Freddie Highmore's thriller series The Assassin just released its season 2 premiere in the United States on Thursday, November 19, exclusively on AMC+. The series, which premiered on Prime Video in the UK earlier this month, is created by two of the producers of Prime Video's Emmy-winning comedy series Fleabag, making The Assassin worth checking out this week. The series earned a strong 72% critic score on Rotten Tomatoes and is praised for its striong leading duo of Highmore and Keeley Hawes, best known for Orphan Black: Echoes and Bodyguard.</p>
+<p>Without getting into spoiler territory, The Assassin season 2 picks up right where season 1 leaves off after a shocking twist ending that completely changes the framework of the series. In the first season of The Assassin, Highmore's protagonist Edward meets up with his estranged mother, Julie, finding her on a Greek island living the life of a retired assassin. Edward is an investigative journalist searching for answers from his mother, specifically about their family history and their distant relationship. However, things quickly go sideways when Julie's past life comes back to haunt her, presenting new threats for both her and Edward.</p>
+<p>These new dangers force Edward and Julie to escape from their island getaway, sending them deep within a global conspiracy that directly relates to Julie's profession as a contract killer. Edward and Julie must find a way to work together and survive despite their damaged mother-son relationship and conflicting personalities, driving mysteries and conflict from both external and internal sources.</p>
+<p>The Assassin carries a similar dysfunctional parental dynamic to Dexter: Resurrection, in which a son must come to terms with the reality of their parent's crimes and must determine where they stand on this undeniable truth. It is also reminiscent of Netflix's hit spy thriller/dark comedy series Black Doves, which just returned for its 6-part sophomore season earlier this month as well.</p>
+<p>The Assassin is far from your standard action thriller due to its complicated mother-son dynamic that is very much the emotional core of the story. That said, nothing is complicated about the on-screen chemistry between Highmore and Keeley, who are not only the backbone of the narrative, but the most entertaining characters throughout The Assassin.</p>
+<p>Given Julie's history, she often comes off as a no-nonsense leader who takes swift, even deadly, action, while Edward's profession as a journalist makes him inquisitive, cautious, and a deep thinker. Because Edward and Julie are quite opposite in their personalities, their relationship defies typical familial standards in interesting ways. The situation between Julie and Edward only becomes more nuanced in The Assassin season 2, as new secrets are revealed that have the potential to ruin the efforts they made in season 1 to make amends.</p>
+<p>Netflix's new 3-part crime thriller follows a brutal attack in rural Spain, a determined investigator, and the dark secrets behind a shocking case.</p>
+<p>One fascinating aspect between Julie and Edward is their role reversal, with Edward generally standing as a figure of morality while Julie is frequently more impulsive and combative. Edward attempts to convince Julie to change her ways, disapproving of her life choices, while Julie is reluctant to change and doesn't take Edward's criticisms. Ultimately, The Assassin is one of the most unique thriller series on streaming right now, combining action, emotion, and humor to create a can't-miss viewing experience on AMC+.</p>
+<p>We want to hear from you. Share your perspective in the comments below, and please keep the conversation respectful.</p>
+<p>The best of ScreenRant, directly in your inbox.</p>
+                <p style="margin-top: 25px;">
+                    <a href="https://screenrant.com/amc-plus-the-assassin-season-2-freddie-highmore-thriller-must-watch/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                        &rarr; Baca artikel asli
+                    </a>
+                </p>
+            </div>
+            
+<div style="text-align:center; margin:20px 0;">
+    <script type="text/javascript">
+        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
+    </script>
+    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
+</div>
+
+            
+        
+<div style="text-align:center; margin:20px 0;">
+    <script type="text/javascript">
+        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
+    </script>
+    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
+</div>
+
+    </div>
+</article>
 <article class="article-card" id="artikel-6228">
     <script type="application/ld+json">{"@context": "https://schema.org", "@type": "NewsArticle", "headline": "Global Ship Lease: Stronger Charter Coverage And A Higher Dividend Support Our Buy", "image": [], "datePublished": "2026-11-19T17:59:09", "dateModified": "2026-11-19T17:59:09", "mainEntityOfPage": "https://railfansday.github.io/100file/world.html#artikel-6228"}</script>
     <h2>Global Ship Lease: Stronger Charter Coverage And A Higher Dividend Support Our Buy</h2>
@@ -6525,176 +6704,6 @@ Having already scored three and assist one for the Reds this season, the Hungari
                 <p>Author Philip Delves Broughton is on Bloomberg This Weekend to discuss his new book, Embargo, and how the 1973 oil crisis transformed Saudi Arabia’s economic and political power while exposing the world’s vulnerability to turmoil in the Middle East. Speaking with hosts David Gura and Christina Ruffini, Delves Broughton examines parallels with today’s Iran conflict, US involvement in Venezuela and Saudi Arabia’s continuing effort to diversify its economy beyond oil. (Source: Bloomberg)</p>
                 <p style="margin-top: 25px;">
                     <a href="https://www.bloomberg.com/news/videos/2026-11-15/the-1973-oil-crisis-still-matters-today-video" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
-                        &rarr; Baca artikel asli
-                    </a>
-                </p>
-            </div>
-            
-<div style="text-align:center; margin:20px 0;">
-    <script type="text/javascript">
-        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
-    </script>
-    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
-</div>
-
-            
-        
-<div style="text-align:center; margin:20px 0;">
-    <script type="text/javascript">
-        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
-    </script>
-    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
-</div>
-
-    </div>
-</article>
-<article class="article-card" id="artikel-3892">
-    <script type="application/ld+json">{"@context": "https://schema.org", "@type": "NewsArticle", "headline": "Joachim Löw impressed by Klopp's start as Germany boss but warns of setbacks", "image": ["https://bulinews.com/i/1280/22219.jpg"], "datePublished": "2026-11-15T14:19:00", "dateModified": "2026-11-15T14:19:00", "mainEntityOfPage": "https://railfansday.github.io/100file/world.html#artikel-3892"}</script>
-    <h2>Joachim Löw impressed by Klopp&#x27;s start as Germany boss but warns of setbacks</h2>
-    <div class="article-meta">
-        📅 Nov 15, 2026 &nbsp;|&nbsp; Category: <strong>World</strong> &nbsp;|&nbsp; 
-        <a href="https://bulinews.com/joachim-low-impressed-klopp-start-germany-boss-but-warns-setbacks" target="_blank" rel="nofollow">Read Source &rarr;</a>
-    </div>
-    <div class="article-body">
-        <img src="https://bulinews.com/i/1280/22219.jpg" alt="Joachim Löw impressed by Klopp&#x27;s start as Germany boss but warns of setbacks" loading="lazy">
-        
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://bulinews.com/i/1280/22219.jpg" alt="Joachim Löw impressed by Klopp's start as Germany boss but warns of setbacks" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
-            
-<div style="text-align:center; margin:20px 0;">
-    <script type="text/javascript">
-        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
-    </script>
-    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
-</div>
-
-            <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Joachim Löw has praised Jürgen Klopp for the start he has made as Germany head coach, having taken over from Julian Nagelsmann last summer following the disappointing World Cup round-of-32 exit against Paraguay.</p>
-<p>“He is doing a very, very good job. He gives the players a lot of confidence and is trying to develop a sustainable playing philosophy. You get the feeling that things are heading in a positive direction,” Löw, who led Germany to World Cup glory in 2014, told Bild TV on Sunday.</p>
-<p>Löw believes Klopp has already got plenty right, including his decision to name 44 players in his first squad and his handling of the controversy surrounding Felix Nmecha's religious crown celebration.</p>
-<p>However, he also urged caution against raising expectations too high, with Germany having struggled to compete with the world's best since their World Cup triumph in 2014.</p>
-<p>“His name alone does not always guarantee success. There will still be a few setbacks before we get back to that level,” Löw emphasised.</p>
-<p>“The results are not all that important at this stage. We are in the Nations League now, and qualifying begins next year, which we will get through. The important thing will be for the team to spend six months playing together and building an understanding,” he said.</p>
-<p>“You cannot expect any coach to get everything working within a few weeks. You have to look at whether there is progress,” Löw added.</p>
-<p>Klopp and Germany will be hoping to secure a place in the UEFA Nations League quarter-finals with a win over the Netherlands in their final Group A2 fixture on Monday.</p>
-                <p style="margin-top: 25px;">
-                    <a href="https://bulinews.com/joachim-low-impressed-klopp-start-germany-boss-but-warns-setbacks" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
-                        &rarr; Baca artikel asli
-                    </a>
-                </p>
-            </div>
-            
-<div style="text-align:center; margin:20px 0;">
-    <script type="text/javascript">
-        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
-    </script>
-    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
-</div>
-
-            
-        
-<div style="text-align:center; margin:20px 0;">
-    <script type="text/javascript">
-        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
-    </script>
-    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
-</div>
-
-    </div>
-</article>
-<article class="article-card" id="artikel-3782">
-    <script type="application/ld+json">{"@context": "https://schema.org", "@type": "NewsArticle", "headline": "Marvel Officially Announces New 'Angela' Series", "image": ["https://static0.srcdn.com/wordpress/wp-content/uploads/2026/11/marvel-s-angela-logo.jpg?w=1600&h=900&fit=crop"], "datePublished": "2026-11-15T00:30:18Z", "dateModified": "2026-11-15T00:30:18Z", "mainEntityOfPage": "https://railfansday.github.io/100file/world.html#artikel-3782"}</script>
-    <h2>Marvel Officially Announces New &#x27;Angela&#x27; Series</h2>
-    <div class="article-meta">
-        📅 Nov 15, 2026 &nbsp;|&nbsp; Category: <strong>World</strong> &nbsp;|&nbsp; 
-        <a href="https://screenrant.com/new-marvel-series-angela-thor-sister/" target="_blank" rel="nofollow">Read Source &rarr;</a>
-    </div>
-    <div class="article-body">
-        <img src="https://static0.srcdn.com/wordpress/wp-content/uploads/2026/11/marvel-s-angela-logo.jpg?w=1600&amp;h=900&amp;fit=crop" alt="Marvel Officially Announces New &#x27;Angela&#x27; Series" loading="lazy">
-        
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://static0.srcdn.com/wordpress/wp-content/uploads/2026/11/marvel-s-angela-logo.jpg?w=1600&h=900&fit=crop" alt="Marvel Officially Announces New 'Angela' Series" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
-            
-<div style="text-align:center; margin:20px 0;">
-    <script type="text/javascript">
-        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
-    </script>
-    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
-</div>
-
-            <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Marvel has announced a new series starring Angela, the forgotten daughter of Odin and sister of Thor and Loki. Originally a character in the Spawn universe, Marvel acquired the rights to the character in 2013, introducing her as an Asgardian raised in the forgotten realm of 'Heven.'</p>
-<p>The daughter of Odin and Freyja, Angela (born 'Aldrif') was kidnapped by Angels and spirited away to the Tenth Realm, which was locked off from the Nine Realms of classic Thor lore. Thor and Loki later went on a mission to free her, with the character starring in her own solo comics as well as appearing in Guardians of the Galaxy and Strikeforce.</p>
-<p>Angela was partially adapted in the MCU's Thor: Ragnarok, with elements of her backstory given to classic villain Hela. Now, Angela is getting her own series as Marvel takes the character back to basics.</p>
-<p>Marvel's new ongoing Angela series will see the character descend on New York as a demon hunter, working on a bounty from Heven itself. Coming February 2026 from Wes Craig and Pere Pérez, the new series will see Angela face off against the demon lord Abraxis, seemingly sidelining past lore to give fans a perfect jumping-on point for the character.</p>
-<p>Angela was last seen as a supporting character in Doctor Strange, helping the sorcerer during his time in Asgard. Now, she has a brand new mission as Marvel reveals:</p>
-<p>Demons are running amok in New York City, and a new demon hunter has been assigned by Heven to hunt and destroy them - Angela. Are things not what they seem? What does the demon lord Abraxis want with the Big Apple? Why is Heven so concerned with Earth? Angela doesn’t really care but plans to wet her blade with evil blood.</p>
-<p>Marvel has also shared covers by Kaare Andrews and Pérez, showcasing Angela's golden armor and razor-like ribbons. Her enemy in this series is the demonic Abraxis, who shouldn't be confused for Abraxas - a multiversal predator held at bay by the existence of Galactus.</p>
-<p>It's possible that Angela will spin out of the newly launched Avengers Volume 10, in which Mephisto's scheming will seemingly unleash demons on the city.</p>
-<p>Despite multiple solo series and a dedicated fanbase, Angela has never truly been integrated into Marvel's Earth-616, rarely interacting with heroes who aren't directly linked to Asgard. The new Angela series seems set to change that, basing her in Marvel's hero capital of New York and giving her a unique role as a dedicated demon hunter.</p>
-<p>Part of Marvel's decision in publishing a new Angela series seems to be based on her appearance in Marvel Rivals. The hero shooter game has increased Angela's profile, as she appears alongside icons like Captain America and Hulk, familiarizing casual fans with her attitude and abilities.</p>
-<p>Speaking to Marvel, editor Nick Lowe appears to confirm that the series is intended to cater to fans who know Angela as a character, but haven't followed her stories thus far, saying:</p>
-<p>Is Angela Thor’s sister? Yes. Was she a Guardian of the Galaxy? Yes. Does she care about either of those? Hel no! Angela’s focused on her new assignment from Heven - rid New York City of the epidemic of demons currently plaguing it and you get to read all about it in her new ongoing series!</p>
-<p>Angela is relatively unique in being a character who began outside Marvel but was then given a very personal connection to it, introduced into sprawling Asgardian lore. Writer Wes Craig emphasizes Angela's nature as a loner character and the challenges that poses, saying:</p>
-<p>Writing my first Marvel series has been very cool. It's such a fun world to play in. Angela's an old school warrior. Stoic, no-nonsense, she doesn't suffer fools, doesn't have time for BS, and she's tough as nails. I love that kind of character. But that also makes her an interesting challenge: What would make someone like that show us her heart? And is there anything that would make her break? Over the next year, we're gonna find out...</p>
-<p>Artist Pere Pérez reveals a personal connection to Angela going back to her Spawn era, confirming there'll be plenty of classic fantasy combat:</p>
-<p>I'm having a crazy amount of fun drawing this series. Wes and I are totally on the same page with the creative choices for Angela, and he is writing a very fun and layered story. One of the very first comics I bought with my own money was the original Angela miniseries from the ‘90s, so being able to add my own twists to her design has been very exciting. I love drawing monsters and demons, and I've been wanting to draw fight scenes involving weapons like... swords, axes, spears and medieval stuff, so expect some crazy action! This book is going to make you feel as if a heavy metal song is blasting in your brain!</p>
-<p>Over the last decade, Angela has had some great stories in Marvel Comics, but has never felt like a true Marvel character. That's seemingly about to change as Angela begins a new mission in New York, hunting an army of demons and unavoidably crossing paths with some of Marvel's biggest heroes.</p>
-<p>We want to hear from you. Share your perspective in the comments below, and please keep the conversation respectful.</p>
-<p>The best of ScreenRant, directly in your inbox.</p>
-                <p style="margin-top: 25px;">
-                    <a href="https://screenrant.com/new-marvel-series-angela-thor-sister/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
-                        &rarr; Baca artikel asli
-                    </a>
-                </p>
-            </div>
-            
-<div style="text-align:center; margin:20px 0;">
-    <script type="text/javascript">
-        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
-    </script>
-    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
-</div>
-
-            
-        
-<div style="text-align:center; margin:20px 0;">
-    <script type="text/javascript">
-        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
-    </script>
-    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
-</div>
-
-    </div>
-</article>
-<article class="article-card" id="artikel-3786">
-    <script type="application/ld+json">{"@context": "https://schema.org", "@type": "NewsArticle", "headline": "Nintendo Officially Reveals New Kirby Game for Switch 2", "image": ["https://static0.polygonimages.com/wordpress/wp-content/uploads/2026/09/ns2_kirbyandtheworldbeyond_scrn_19.jpeg?w=1600&h=900&fit=crop"], "datePublished": "2026-11-15T00:19:17Z", "dateModified": "2026-11-15T00:19:17Z", "mainEntityOfPage": "https://railfansday.github.io/100file/world.html#artikel-3786"}</script>
-    <h2>Nintendo Officially Reveals New Kirby Game for Switch 2</h2>
-    <div class="article-meta">
-        📅 Nov 15, 2026 &nbsp;|&nbsp; Category: <strong>World</strong> &nbsp;|&nbsp; 
-        <a href="https://www.polygon.com/kirby-world-beyond-nintendo-switch-2-2027/" target="_blank" rel="nofollow">Read Source &rarr;</a>
-    </div>
-    <div class="article-body">
-        <img src="https://static0.polygonimages.com/wordpress/wp-content/uploads/2026/09/ns2_kirbyandtheworldbeyond_scrn_19.jpeg?w=1600&amp;h=900&amp;fit=crop" alt="Nintendo Officially Reveals New Kirby Game for Switch 2" loading="lazy">
-        
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://static0.polygonimages.com/wordpress/wp-content/uploads/2026/09/ns2_kirbyandtheworldbeyond_scrn_19.jpeg?w=1600&h=900&fit=crop" alt="Nintendo Officially Reveals New Kirby Game for Switch 2" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
-            
-<div style="text-align:center; margin:20px 0;">
-    <script type="text/javascript">
-        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
-    </script>
-    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
-</div>
-
-            <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>For Kirby's 35th anniversary, he's going to a world beyond</p>
-<p>HAL Laboratory's venerable heroic pink puff Kirby will soon embark on a new adventure on Nintendo Switch 2 with the release of Kirby and the World Beyond next year — his second outing on Nintendo's current-generation console. In September, Nintendo's Yoshiaki Koizumi announced Kirby's next adventure during a Nintendo Direct showcase, revealing an expansive new world for the adorable hero to explore.</p>
-<p>Kirby and the World Beyond is described as a new 3D adventure for the character, in which players will "freely explore an expansive world and put Kirby’s Copy Abilities to creative use," Nintendo said in an announcement.</p>
-<p>Kirby's most recent adventure game, Kirby and the Forgotten Land, was released in 2022, and fans have been itching for a new Kirby 3D adventure since — especially after last year's intense racing game Kirby Air Riders. They can soon get back into it with the launch of Kirby and the World Beyond. This appears to be the adorable pink ball's biggest open-world adventure yet. As shown in the trailer, Kirby smashes through a crack in the sky to uncover a huge world beyond his own.</p>
-<p>Kirby and the World Beyond is slated for release on Nintendo Switch 2 sometime during spring 2027.</p>
-<p>2027 marks Kirby's 35th anniversary, so players can probably expect more exciting Kirby announcements before then.</p>
-<p>We want to hear from you. Share your perspective in the comments below, and please keep the conversation respectful.</p>
-<p>The best of Polygon.com, directly in your inbox.</p>
-                <p style="margin-top: 25px;">
-                    <a href="https://www.polygon.com/kirby-world-beyond-nintendo-switch-2-2027/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
